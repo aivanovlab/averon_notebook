@@ -42,7 +42,12 @@ def get_ligands_iuphar(gene):
         target = a[0]
         ligids = []
         todrop = []
-        ligands = target.ligands(species='Human')
+        ligands = []
+        try:
+            ligands = target.ligands(species='Human')
+        except:
+            pass
+        
         for i in range(0,len(ligands)):
             try:
                 ligid = ligands[i].ligand_id()
@@ -152,21 +157,24 @@ def show_ligands(out1,progressbar,genes):
     return(ligands_df)
 ###END Ligands from IUPHAR
 
-def get_txt_description_of_regulations(geneA,mutA,partner,pdf,net_dict):
-    descr_base = geneA + " " + (";").join(mutA) + "/"+partner + " interaction can regulate "
+def get_txt_description_of_regulations(partner,enrichment_dict,qvalue,params):
+    driver_gene = params['driver_gene']
+    driver_mut = params['driver_mut']
+    descr_base = driver_gene + " " + (";").join(driver_mut) + "/"+partner + " interaction can regulate "
     out = []
+    pdf = enrichment_dict[partner].copy()
+    pdf = pdf.loc[pdf['qvalue']<qvalue]
     for i in pdf.index:
         pathway = pdf.loc[i]['SET']
         description = descr_base + pathway
-        net_dict["nodes"].append({"data":{"id":pathway,"classes":"pathway"}})
-        included_genes = pdf.loc[i]['sig_genes_included']
-        included_genes = included_genes.split(";")
-        included_genes = [x.strip() for x in included_genes]
-        included_genes = (",").join(included_genes)
-        description = description + " by upregulating "+ included_genes
-        print(description)
+        genes = pdf.loc[i]['sig_genes_included'].split(";")
+        genes = [x.strip() for x in genes]
+        genes = (", ").join(genes)
+        description = description + " by upregulating "+ genes
+        #print(description)
         out.append(description)
-    return ("\n").join(out)
+    #return ("\n").join(out)
+    return out
 def create_interactive_network(geneA, partner,enrichment_df,fqval,colors,sig_genes,net_folder):
     '''
     geneA - partner
@@ -192,7 +200,7 @@ def create_interactive_network(geneA, partner,enrichment_df,fqval,colors,sig_gen
 
     
 
-    pdf = enrichment_df.loc[enrichment_df['fqval']<fqval]
+    pdf = enrichment_df.loc[enrichment_df['qvalue']<fqval]
     pdf.reset_index(inplace=True)
     pdf.drop(['index'],inplace=True,axis=1)
 
@@ -275,6 +283,54 @@ def create_interactive_network2(net_df,type_df,colors=['green','red','blue','ora
     return (ipycytoscape_obj)
 
 
+def display_cynetwork3(params,cancer,net_df,type_df, colors,mapping,layout='force-directed'):
+    
+    import py4cytoscape as p4c
+    from py4cytoscape import gen_node_color_map
+    from py4cytoscape import gen_node_size_map
+    from py4cytoscape import scheme_c_number_continuous
+
+    
+    nodes_arr = []
+    edges_arr = []
+    columns = net_df.columns.tolist()
+    for i in net_df.index:
+        node1 = net_df.loc[i][columns[0]]
+        node2 = net_df.loc[i][columns[1]]
+        type1 = type_df.loc[type_df['node']==node1]['type'].values[0]
+        type2 = type_df.loc[type_df['node']==node2]['type'].values[0]
+        
+        nodes_arr.append([node1,type1])
+        nodes_arr.append([node2,type2])
+        edges_arr.append([node1,node2,'interacts'])
+    
+    
+    nodes_df = pd.DataFrame(nodes_arr,columns = ['id','type'])
+    edges_df = pd.DataFrame(edges_arr,columns = ['source','target','interaction'])
+    p4c.create_network_from_data_frames(nodes=nodes_df, edges=edges_df, title="network1")
+    
+    #colors = ['#FF0000','#00FF00','#0000FF','#FFA500']
+    driver_gene = params['driver_gene']
+    driver_mut = params['driver_mut']
+    fig_folder = params['fig_folder']
+    
+    p4c.set_node_color_mapping('type',mapping,colors,'d',style_name='default')
+    p4c.set_node_shape_default('ELLIPSE',style_name='default')
+    p4c.set_node_size_default(20,style_name='default')
+    p4c.analyze_network()
+    p4c.set_node_size_mapping(**gen_node_size_map('Degree', scheme_c_number_continuous(25, 60),style_name='default'))
+    p4c.layout_network(layout_name = layout)
+    file = fig_folder+gen_filename(driver_gene,driver_mut,cancer,"_signature_genes.png")
+    p4c.export_image(file,overwrite_file=True);    
+
+    return p4c, file
+
+
+
+
+
+
+
 
 def display_cynetwork2(net_df,type_df, colors=['#FF0000','#00FF00','#0000FF','#FFA500'],layout='force-directed'):
     
@@ -299,14 +355,15 @@ def display_cynetwork2(net_df,type_df, colors=['#FF0000','#00FF00','#0000FF','#F
     
     nodes_df = pd.DataFrame(nodes_arr,columns = ['id','type'])
     edges_df = pd.DataFrame(edges_arr,columns = ['source','target','interaction'])
-
     p4c.create_network_from_data_frames(nodes=nodes_df, edges=edges_df, title="network1")
+    
     #colors = ['#FF0000','#00FF00','#0000FF','#FFA500']
-    p4c.set_node_color_mapping('type',['Driver','Partner','Pathway'],colors,'d')
-    p4c.set_node_shape_default('ELLIPSE')
-    p4c.set_node_size_default(20)
+    
+    p4c.set_node_color_mapping('type',['Driver','Partner','Pathway'],colors,'d',style_name='default')
+    p4c.set_node_shape_default('ELLIPSE',style_name='default')
+    p4c.set_node_size_default(20,style_name='default')
     p4c.analyze_network()
-    p4c.set_node_size_mapping(**gen_node_size_map('Degree', scheme_c_number_continuous(25, 60)))
+    p4c.set_node_size_mapping(**gen_node_size_map('Degree', scheme_c_number_continuous(25, 60),style_name='default'))
     p4c.layout_network(layout_name = layout)
     return p4c
 
@@ -344,7 +401,7 @@ def display_cynetwork(geneA,partner,cancer,sig_genes,enrichment_df,fqval,
             nodes_arr.append([gene,'sig_gene'])
             edges_arr.append([partner,gene,'regulate'])
 
-    pdf = enrichment_df.loc[enrichment_df['fqval']<fqval]
+    pdf = enrichment_df.loc[enrichment_df['qvalue']<fqval]
     pdf.reset_index(inplace=True)
     pdf.drop(['index'],inplace=True,axis=1)
 
@@ -614,29 +671,20 @@ def pathway_enrichment(coding_genes,sig_genes,pathway_folder,files,savefile,part
     import scipy.stats as stats
     import pandas as pd
 
-    #all_genes = len(set(coding_genes['Approved symbol'].values.tolist()))
     all_genes = len(set(coding_genes))
-    head = ["SET","fpval","num_sig_genes","num_sig_genes_included","num_genes_in_pathway",
+    head = ["SET","pvalue","num_sig_genes","num_sig_genes_included","num_genes_in_pathway",
                     "Expected, %","Actual, %","Enrichment","sig_genes_included"]
     enrichment_df = pd.DataFrame()
     bargraphs = []
     for geneset_file in files:
         pathway_f = open(pathway_folder+geneset_file, "r")
-        #pathways = {}
-        
+       
         out = []
         for line in pathway_f:
             line = line.split("\t")
             
-            #line = [x.strip().upper() for x in line[2:] if x.strip().upper() != '']
-            #pathways[line[0]]=[x.strip().upper() for x in line[2:] if x.strip().upper() != '']
             name = line[0]
             pathway=[x.strip().upper() for x in line[2:] if x.strip().upper() != '']
-            
-    
-            #for pathway in pathways.keys():
-            #name = pathway
-            #sig_genes_in_pathway = len(sig_genes.intersection(set(pathways[pathway])))
             
             sig_genes_in_pathway = len(sig_genes.intersection(set(pathway)))
             if sig_genes_in_pathway > 0:
@@ -669,13 +717,13 @@ def pathway_enrichment(coding_genes,sig_genes,pathway_folder,files,savefile,part
                 out.append(nl)
 
         pathways_enrichment_df = pd.DataFrame(out,columns=head)    
-        pvals = pathways_enrichment_df['fpval'].values
+        pvals = pathways_enrichment_df['pvalue'].values
         if len(pvals)>0:
             qvals = mltc.multipletests(pvals,method='fdr_bh')[1]
         else:
             qvals = []
-        pathways_enrichment_df['fqval']=qvals
-        selected_df=pathways_enrichment_df.sort_values(by=['fqval'])
+        pathways_enrichment_df['qvalue']=qvals
+        selected_df=pathways_enrichment_df.sort_values(by=['qvalue'])
         bargraph = plt.figure(figsize=(3,3));
         plt.close(bargraph);
         if len(selected_df)>0:
@@ -701,7 +749,7 @@ def enrichment_bargraph(selected_df, top, geneset_file,savefile,partner):
     
     if top > len(selected_df):
         top = len(selected_df)
-    selected_df.sort_values(by=['fqval'],inplace=True)
+    selected_df.sort_values(by=['qvalue'],inplace=True)
     fig, ax = plt.subplots(figsize=(3, (0.25*top)));
     
     
@@ -719,15 +767,13 @@ def enrichment_bargraph(selected_df, top, geneset_file,savefile,partner):
     
     
     ax2.set_xlabel("-Log10(Q-Value)",fontsize=11);
-    #ax2.set_title(geneset_file+": Top-"+str(top)+" gene sets",fontsize=15);
     sb.set_theme(style="white",palette=None);
     sb.set_style("whitegrid")
     plt.grid(False);
-    mybar = sb.barplot(x=[-np.log10(x) for x in selected_df['fqval'].values[:top]],
+    mybar = sb.barplot(x=[-np.log10(x) for x in selected_df['qvalue'].values[:top]],
                y = selected_df['SET'].values[:top],
                ax=ax2,dodge=False,palette='summer',orient='h');
     
-    #mybar = sns.barplot(x=maths,y=physics,orient='h',ax=ax)
     mybar.set_yticklabels([]);
     ax2.set_yticks([]);
     lbl = selected_df['SET'].values[:top]
@@ -735,18 +781,7 @@ def enrichment_bargraph(selected_df, top, geneset_file,savefile,partner):
     ax2.spines['top'].set_visible(False);
     ax2.spines['right'].set_visible(False);
     
-    #plt.vlines(x=-np.log10(0.05),
-    #           ymin=0,
-    #           ymax = ax2.get_ylim()[1],color='red')
     ax2.axvline(x=-np.log10(0.05),color='red',ls ='--',lw=0.5)
-    #if savefile == 1:
-    #    pdf_file = geneset_file+"_enrichment.png"
-    #    fig.savefig(pdf_file);
-            #, #dpi=600, #facecolor='w', edgecolor='w',
-                                #orientation='portrait',
-                                #format="pdf")#,
-                                #bbox_inches="tight")#, 
-                                #pad_inches=None,metadata=None)
     return fig;
 
 
@@ -755,8 +790,6 @@ def get_mut_data(mut_f,df_barcodes,cancer,geneA,mutA):
     mut_samples,wt_samples = get_mutation_data(mut_f, df_barcodes,cancer,geneA, mutA)
     mut_samples = list(set(mut_samples))
     wt_samples = list(set(wt_samples))
-    #print("ALL_MUT_SAMPLES: ",len(mut_samples))
-    #print("ALL_WT_SAMPLES: ",len(wt_samples))
     return(mut_samples,wt_samples)
 
 def gen_filename(geneA,mutA,cancer,suffix):
@@ -766,25 +799,31 @@ def gen_filename(geneA,mutA,cancer,suffix):
         return(("_").join([geneA,'MUT',cancer])+suffix)
     
 
-def calculate_ppi_scores_not_scaled(out_folder,cancer,geneA,mutA,partners,df_mut_exp_samples,df_wt_exp_samples):
+def calculate_ppi_scores_not_scaled(cancer,params,df_wt_exp_samples,df_mut_exp_samples):
     from pathlib import Path
     import os
     #out_folder = out_folder+("_").join([cancer,geneA,("-").join(mutA),"batch"])
     #Path(out_folder).mkdir(parents=True, exist_ok=True)
+    
+
+    out_folder = params['tbl_folder']
+    driver_gene = params['driver_gene']
+    driver_mut = params['driver_mut']
+    partners = params['partners']
+    #df_wt_exp_samples = params['df_wt_exp_samples']
+    #df_mut_exp_samples = params['df_mut_exp_samples']
     os.chdir(out_folder)
-
-
     all_mut_score_df = pd.DataFrame(index = df_mut_exp_samples.columns)
     all_wt_score_df = pd.DataFrame(index = df_wt_exp_samples.columns)
     for partner in partners:
-        scores_mut,scores_mut_df = get_PPI_scores3_not_scaled(df_mut_exp_samples,geneA,partner)
-        scores_wt,scores_wt_df = get_PPI_scores3_not_scaled(df_wt_exp_samples,geneA,partner)
+        scores_mut,scores_mut_df = get_PPI_scores3_not_scaled(df_mut_exp_samples,driver_gene,partner)
+        scores_wt,scores_wt_df = get_PPI_scores3_not_scaled(df_wt_exp_samples,driver_gene,partner)
         scores_mut_df.columns = [partner]
         scores_wt_df.columns = [partner]
         all_mut_score_df = pd.concat([all_mut_score_df,scores_mut_df],join='inner',axis=1)
         all_wt_score_df = pd.concat([all_wt_score_df,scores_wt_df],join='inner',axis=1)
-    scores_mut_df.to_csv(out_folder+gen_filename(geneA,mutA,cancer,"_PPIscores.csv"),sep=",")
-    scores_wt_df.to_csv(out_folder+geneA+"_WT_"+cancer+"_PPIscores.csv",sep=",")
+    scores_mut_df.to_csv(out_folder+gen_filename(driver_gene,driver_mut,cancer,"_PPIscores.csv"),sep=",")
+    scores_wt_df.to_csv(out_folder+driver_gene+"_WT_"+cancer+"_PPIscores.csv",sep=",")
     return(all_mut_score_df,all_wt_score_df,scores_mut_df,scores_wt_df)    
     
 
@@ -916,24 +955,15 @@ def get_expression(exp_f,samples,coding_genes):
     todrop = []
     df_exp.drop([x for x in df_exp.index if x not in coding_genes],inplace=True)
     
-    #df_exp = keep_coding(df_exp,coding_genes)
-
     #Remove duplicated genes if any
-    #df_exp.reset_index(inplace=True)
     todrop = []
     indices = []
-    #for i in df_exp.index:
-    #    if df_exp.iloc[i]['GENE_SYMBOL'] in indices:
-    #        todrop.append(i)
-    #    else:
-    #        indices.append(df_exp.iloc[i]['GENE_SYMBOL'])
     for i in df_exp.index:
         if i in indices:
             todrop.append(i)
         else:
             indices.append(i)
     df_exp.drop(todrop,inplace=True,axis=0)
-    #df_exp.set_index("GENE_SYMBOL",inplace=True)
     return df_exp
 
 def drop_no_exp(df_exp):
@@ -958,21 +988,36 @@ def prepare_cancer_barcodes(clinical_f):
     return barcode_df
 
 
-def get_wt_mut_expression(mut_f,exp_f,coding_genes,barcode_df,cancer,geneA,mutA,out_folder):
-    mut_samples,wt_samples = get_mut_data(mut_f,barcode_df,cancer,geneA,mutA)
-    df_exp = get_expression(exp_f,mut_samples+wt_samples, coding_genes)
-
-    #Drop genes with zero expression in > 30% samples in up_df
-    df_exp = drop_no_exp(df_exp.copy())#av
-
-    #Log(x+1) taransform
-    df_exp = df_exp.apply(lambda x: np.log2(x+1),)
+def get_wt_mut_expression(cancer, params):
+    mut_f = params['mut_f']
+    exp_f = params['exp_f']
+    coding_genes = params['coding_genes']
+    barcode_df = params['barcode_df']
+    driver_gene = params['driver_gene']
+    driver_mut = params['driver_mut']
+    out_folder = params['tbl_folder']
     
-    df_wt_exp_samples = df_exp.drop([x for x in mut_samples if x in df_exp.columns],axis=1)
-    df_mut_exp_samples = df_exp.drop([x for x in wt_samples if x in df_exp.columns],axis=1)
+    df_mut_exp_samples = pd.DataFrame()
+    df_wt_exp_samples = pd.DataFrame()
+    if cancer not in barcode_df.columns:
+        print("No samples for ",cancer," were found. Check the cancer type name.")
+    else:
+        mut_samples,wt_samples = get_mut_data(mut_f,barcode_df,cancer,driver_gene,driver_mut)
+        df_exp = get_expression(exp_f,mut_samples+wt_samples, coding_genes)
 
-    df_wt_exp_samples.to_csv(out_folder+geneA+"_WT_"+cancer+"_exp.csv",sep=",")
-    df_mut_exp_samples.to_csv(out_folder+gen_filename(geneA,mutA,cancer,"_exp.csv"))
+        #Drop genes with zero expression in > 30% samples in up_df
+        df_exp = drop_no_exp(df_exp.copy())#av
+
+        #Log(x+1) taransform
+        df_exp = df_exp.apply(lambda x: np.log2(x+1),)
+    
+        df_wt_exp_samples = df_exp.drop([x for x in mut_samples if x in df_exp.columns],axis=1)
+        df_mut_exp_samples = df_exp.drop([x for x in wt_samples if x in df_exp.columns],axis=1)
+
+        df_wt_exp_samples.to_csv(out_folder+driver_gene+"_WT_"+cancer+"_exp.csv",sep=",")
+        df_mut_exp_samples.to_csv(out_folder+gen_filename(driver_gene,driver_mut,cancer,"_exp.csv"))
+        print("Samples with target mutation(s):",len(mut_samples))
+        print("Wild type samples:",len(wt_samples))
     return(df_mut_exp_samples,df_wt_exp_samples)
 
 
@@ -992,9 +1037,15 @@ def get_mRNA_expession(exp_f):
     genes_with_expression = list(set(genes_with_expression))
     return(genes_with_expression)
 
+def load_partners(ppi_f):
+    with open(ppi_f) as ppi_f:
+        partners = [x.strip().upper() for x in ppi_f]
+    print("There are", len(partners), "partners")
+    return(partners)
 
 def get_cancer_mutation_freq(barcode_df,mut_f,geneA,mutA,cancers):
 #Mutation frequency
+    sns.set_style("whitegrid", {'axes.grid' : False})
     n = 0
     cancers_df = pd.DataFrame(index = cancers,columns = ['Wild type','Other mutants','Target mutant'])
     cancers_df['Target mutant']=0
@@ -1122,11 +1173,16 @@ def get_neo_ppi_score_heatmap(out_df):
     g.ax_heatmap.set_yticklabels(g.ax_heatmap.get_ymajorticklabels(), fontsize = 10,va="center");
     return(g)
 
-def build_heatmap(cancer,ppi_score_dict,clinical_f,geneA,mutA,fig_folder,sortby):
+def build_heatmap(cancer,ppi_score_dict,params,sortby):
+    
+    clinical_f= params['clinical_f']
+    driver_gene = params['driver_gene']
+    driver_mut = params['driver_mut']
+    fig_folder = params['fig_folder']
     
     df = ppi_score_dict[cancer][0].copy()
     df.fillna(0,inplace=True)
-    gene_exp = ppi_score_dict[cancer][1].loc[geneA].values
+    gene_exp = ppi_score_dict[cancer][1].loc[driver_gene].values
     gene_tmp1 = gene_exp.copy()
     gene_tmp1.sort()
     colors = plt.get_cmap('viridis')(np.linspace(0.1, 0.9, len(gene_tmp1)))
@@ -1134,38 +1190,48 @@ def build_heatmap(cancer,ppi_score_dict,clinical_f,geneA,mutA,fig_folder,sortby)
     for i in range(0,len(gene_tmp1)):
         lut[gene_tmp1[i]]=colors[i]
     
-    gene_df = ppi_score_dict[cancer][1].transpose().pop(geneA)
+    gene_df = ppi_score_dict[cancer][1].transpose().pop(driver_gene)
     race_df = pd.read_csv(clinical_f,sep="\t",index_col=0).loc[df.index].pop("race")
     gender_df = pd.read_csv(clinical_f,sep="\t",index_col=0).loc[df.index].pop("gender")
     age_df = pd.read_csv(clinical_f,sep="\t",index_col=0).loc[df.index].pop("age_at_initial_pathologic_diagnosis")
-    age_df.fillna(0,inplace=True)
+    age_df.fillna(age_df.mean(),inplace=True)
 
     race_lut = dict()
+    
+    for i in race_df.index:
+        if "WHITE" not in race_df.loc[i].upper() and "BLACK" not in race_df.loc[i].upper() and "ASIAN" not in race_df.loc[i].upper():
+            race_df.loc[i] = "Other/NA"
+        if "BLACK" in race_df.loc[i].upper():
+            race_df.loc[i] = "Black"
+        if "WHITE" in race_df.loc[i].upper():
+            race_df.loc[i] = "White"
+        if "ASIAN" in race_df.loc[i].upper():
+            race_df.loc[i] = "Asian"
+    
     for i in race_df.values:
-        if i =="WHITE":
+        if "WHITE" in str(i).upper():
             race_lut[i]="whitesmoke"
-        elif i == "BLACK":
-            race_lut[i]="BLACK"
-        elif i == "ASIAN":
-            race_lut[i] = "Orange"
+        elif "BLACK" in str(i).upper():
+            race_lut[i]="black"
+        elif "ASIAN" in str(i).upper():
+            race_lut[i] = "orange"
         else:
-            race_lut[i] = "cyan" 
+            race_lut["Other/NA"] = "grey" 
         
-    gender_lut = dict(zip(gender_df.unique(), ["deepskyblue","lightpink"]))
+    for i in race_df.index:
+        if gender_df.loc[i].upper()=="MALE":
+            gender_df.loc[i]="Male"
+        if gender_df.loc[i].upper()=="FEMALE":
+            gender_df.loc[i]="Female"
+            
+    gender_lut = dict(zip(gender_df.unique(), ["lightpink","deepskyblue"]))
 
     age = age_df.values.tolist()
-    #age_lut = dict()
-    #for i in range(0,len(age)):
-    #    if age[i] < 40:
-    #        c = 'red'
-    #    elif age[i] >= 40 and age[i] < 50:
-    #        c = 'orange'
-    #    else:
-    #        c = 'green'
+   
     age_pal = sns.light_palette('skyblue', len(set(age)))
     age_lut = dict(zip(set(age), age_pal))
 
-    gene_mut_name=geneA+"_"+mutA[0]
+    gene_mut_name=driver_gene+"_"+driver_mut[0]
     row_colors = pd.DataFrame({#gene_mut_name:gene_df.map(lut),
                            'Race':race_df.map(race_lut),
                            'Gender':gender_df.map(gender_lut),
@@ -1189,21 +1255,74 @@ def build_heatmap(cancer,ppi_score_dict,clinical_f,geneA,mutA,fig_folder,sortby)
     
     if len(df.columns)>1:
         g = sns.clustermap(data=df,cmap='seismic',method='complete',row_colors=row_colors,xticklabels=1,yticklabels=0,
-                  dendrogram_ratio=(.1, 0.1),row_cluster=False,figsize=(6,6),
-                       cbar_kws=dict(ticks=[min_val, max_val], orientation='horizontal'))
+                  dendrogram_ratio=(.1, 0.1),row_cluster=False,figsize=(6,6),cbar_pos=None)
+                       #cbar_kws=dict(ticks=[min_val, max_val], orientation='horizontal'))
         g.ax_col_dendrogram.set_title(cancer)
     else:
         g = sns.clustermap(data=df,cmap='seismic',method='complete',row_colors=row_colors,xticklabels=1,yticklabels=0,
-                  dendrogram_ratio=(.1, 0.1),row_cluster=False,col_cluster=False,figsize=(6,6),
-                       cbar_kws=dict(ticks=[min_val, max_val], orientation='horizontal'))
+                  dendrogram_ratio=(.1, 0.1),row_cluster=False,col_cluster=False,figsize=(6,6),cbar_pos=None)
+                       #cbar_kws=dict(ticks=[min_val, max_val], orientation='horizontal'))
     g.ax_heatmap.set_xticklabels(g.ax_heatmap.get_xmajorticklabels(), fontsize = 6);
     g.ax_heatmap.set_yticklabels(g.ax_heatmap.get_ymajorticklabels(), fontsize = 3);
-    plt.setp(g.ax_heatmap.yaxis.get_majorticklabels(), rotation=0)
-    #g.fig.suptitle(cancer)
+    g.ax_heatmap.set_ylabel("tumor samples");
     
-    x0, _y0, _w, _h = g.cbar_pos
-    g.ax_cbar.set_position([x0, 0.95, g.ax_row_dendrogram.get_position().width, 0.02])
-    fig_file = fig_folder+gen_filename(geneA,mutA,cancer,"heatmap.pdf")
+    from matplotlib.patches import Patch
+    
+    #Age cbar
+    g.fig.set_size_inches(7, 6)
+    g.fig.subplots_adjust(right=0.8)
+    ax1 = g.fig.add_axes([0.85, 0.48, 0.15,0.03])
+    age1 = [] #to remove "not available" age
+    for a in age:
+        try:
+            age1.append(int(a))
+        except:
+            pass
+    norm = plt.Normalize(min(age1), max(age1))
+    from matplotlib.colors import ListedColormap
+    my_cmap = ListedColormap(age_pal.as_hex())
+    sm = plt.cm.ScalarMappable(cmap=my_cmap, norm=norm)
+    ticks = [min(age),max(age)]
+    
+    cb = plt.colorbar(sm, cax=ax1,orientation='horizontal',ticks=ticks)
+    ax1.set_title("AGE")
+    
+    
+    #PPI Score
+    
+    ax2 = g.fig.add_axes([0.85, 0.35, 0.15,0.03])
+    norm = plt.Normalize(min(df.min()),max(df.max()))
+    #my_cmap2 = ListedColormap(age_pal.as_hex())
+    sm2 = plt.cm.ScalarMappable(cmap='seismic', norm=norm)
+    ticks = [min(df.min()),max(df.max())]
+    
+    cb2 = plt.colorbar(sm2, cax=ax2,orientation='horizontal',ticks=ticks)
+    ax2.set_title("PPI Score")
+    
+    #Race legend
+    handles = [Patch(facecolor=race_lut[name]) for name in race_lut]
+    l1 = g.ax_heatmap.legend(handles, race_lut, title='RACE',
+         loc='upper left',
+         bbox_to_anchor=(0.85, 0.9),
+         bbox_transform=plt.gcf().transFigure,
+         borderaxespad=0)
+    ax = g.ax_heatmap.add_artist(l1)
+    #Gender legend
+    handles = [Patch(facecolor=gender_lut[name]) for name in gender_lut]
+    
+    g.ax_heatmap.legend(handles, gender_lut, title='GENDER',
+          loc='upper left',
+          bbox_to_anchor=(0.85, 0.7),
+          bbox_transform=plt.gcf().transFigure)
+    
+    plt.setp(g.ax_heatmap.yaxis.get_majorticklabels(), rotation=0)
+    
+    
+    
+    #x0, _y0, _w, _h = g.cbar_pos
+    #g.ax_cbar.set_position([None, None, None, None])
+    #g.ax_cbar.set_position([x0, 0.95, g.ax_row_dendrogram.get_position().width, 0.02])
+    fig_file = fig_folder+gen_filename(driver_gene,driver_mut,cancer,"heatmap.pdf")
     g.savefig(fig_file, dpi=600,format='pdf')
     return(g,df1)
 
@@ -1270,9 +1389,15 @@ def boxplot_neoppi_score_distribution(genes,cancers,ppi_score_dict,palette,color
             j=0
             i+=1
     return(fig)
-        
 
-def survival_analysis_with_progress_bar(mut_samples,clinical_f,all_mut_score_nn_df,show_plot,pval_treshold):
+def show_ax(ax,flag):
+    ax.spines['top'].set_visible(flag)
+    ax.spines['right'].set_visible(flag)
+    ax.spines['bottom'].set_visible(flag)
+    ax.spines['left'].set_visible(flag)
+    return ax
+
+def survival_analysis(mut_samples,clinical_f,all_mut_score_nn_df,show_plot,pval_treshold):
     '''
     Determine the difference in survival times in mutant samples with high and low neoPPI scores
     mut_samples: list 
@@ -1306,6 +1431,7 @@ def survival_analysis_with_progress_bar(mut_samples,clinical_f,all_mut_score_nn_
     
     for partner in mut_survive_df.columns[2:]:
         partner_df = mut_survive_df[['OS.time','vital_status',partner]].copy()
+        partner_df.sort_values(by=[partner],inplace=True)
         partner_df.dropna(inplace=True)
         T = partner_df["OS.time"]
         E = partner_df["vital_status"]
@@ -1313,12 +1439,16 @@ def survival_analysis_with_progress_bar(mut_samples,clinical_f,all_mut_score_nn_
         kmf1.fit(durations = T, event_observed = E)
         kmf2 = KaplanMeierFitter()
         kmf2.fit(durations = T, event_observed = E)
-    
+        L = len(partner_df) #100%
+        p33 = (int)(L*33/100)
+        p66 = (int)(L*66/100)
+        
         m1 = (partner_df[partner] >= np.median(partner_df[partner]))
         m2 = (partner_df[partner] < np.median(partner_df[partner]))
+       
         pval = 1
         try:
-            results = logrank_test(T[m1], T[m2], E[m1], E[m2], alpha=.99)
+            results = logrank_test(T[m1], T[m2], E[m1], E[m2])
             pval = results.p_value
             sns.set_theme(style="white",palette=None)
             sns.set_style("white")
@@ -1352,13 +1482,13 @@ def survival_analysis_with_progress_bar(mut_samples,clinical_f,all_mut_score_nn_
         
         progressbar.value += 1
     surv_sum_df = pd.DataFrame(out,columns = ['PARTNER','MEDIAN_TIME_HIGH','MEDIAN_TIME_LOW','PVALUE'])
-    
     plots = len(fig_dict.keys())
     if plots > 0:
         rows,cols = get_best_grid(plots,5)
         if plots/cols > rows:
             rows = rows + 1
         fig, axs = plt.subplots(rows,cols,figsize=(cols*4,rows*3.5))
+
         fig.tight_layout(pad=4)
         i = 0
         j = 0
@@ -1371,24 +1501,47 @@ def survival_analysis_with_progress_bar(mut_samples,clinical_f,all_mut_score_nn_
                 ax = axs[i]
             else:
                 ax = axs
-            #fig_dict[partner][0].survival_function_.plot(ax=axs[i,j],color='red')
-            #fig_dict[partner][1].survival_function_.plot(ax=axs[i,j])
             fig_dict[partner][0].survival_function_.plot(ax=ax,color='red')
             fig_dict[partner][1].survival_function_.plot(ax=ax)
         
             ax.set_title(partner)
             ax.set_xlabel("Years")
             ax.set_ylabel("Survival probability")
-            ax.set_ylim(0,1)
+            ax.set_ylim(0,1.1)
             ax.text(0,0.05,"P-value = "+str(np.round(fig_dict[partner][2],3)),fontsize=8)
             j+=1
             if j == cols:
                 j = 0
                 i = i + 1
+        N = len(list(fig_dict.keys()))
+        while N < cols*rows:
+            if rows > 1 and cols > 1:
+                ax = axs[i,j]
+                ax.axis('off')
+            elif rows == 1 and cols > 1:
+                ax = axs[j]
+                ax.axis('off')
+            elif rows > 1 and cols == 1:
+                ax = axs[i]
+                ax.axis('off')
+            else:
+                ax = axs
+                ax.axis('off')
+            j+=1
+            if j == cols:
+                j = 0
+                i = i + 1
+            N=N+1
+                
+            
+        
     else:
         fig = plt.figure();
         plt.close(fig)
-    return(surv_sum_df,fig)
+    
+    todrop = []
+    surv_sum_df['QVALUE'] = get_FDR(surv_sum_df['PVALUE'])
+    return(surv_sum_df,fig,m1,m2,mut_survive_df)
 
 def calculate_correlations(df_mut_exp_samples,df_wt_exp_samples,partners,all_mut_score_nn_df,all_wt_score_nn_df):
     exp_arr_mut = df_mut_exp_samples.values
@@ -1480,7 +1633,7 @@ def sig_genes_size(sign_gene_dict):
     df_stat.sort_index(inplace=True)
     return(df_stat)
     
-def jaccard(sign_gene_dict,fig_folder):
+def jaccard(sign_gene_dict,fig_folder,color,xfontsize=4,yfontsize=4):
     root = tkinter.Tk();
     genesets = []
     genesets_data = []
@@ -1533,9 +1686,9 @@ def jaccard(sign_gene_dict,fig_folder):
                     xticklabels=1,yticklabels=1,
                     cbar_pos=(-0.04, 0.75, .01, .2),
                     dendrogram_ratio=(.025, 0.025),
-                    cmap='Blues')
-    g.ax_heatmap.set_xticklabels(g.ax_heatmap.get_xmajorticklabels(), fontsize = 4);
-    g.ax_heatmap.set_yticklabels(g.ax_heatmap.get_ymajorticklabels(), fontsize = 4);
+                    cmap=color)
+    g.ax_heatmap.set_xticklabels(g.ax_heatmap.get_xmajorticklabels(), fontsize = xfontsize);
+    g.ax_heatmap.set_yticklabels(g.ax_heatmap.get_ymajorticklabels(), fontsize = yfontsize);
     print("Average Jaccard Index: ", np.round(np.mean(Jarr),1), "%")
     #g.savefig(fig_folder+"jackard.png",dpi=600)
     return(g)
@@ -1586,27 +1739,53 @@ def pathway(sign_gene_dict,files,partner,coding_genes,pathway_folder):
     partner_genes = []
     bars_dict = {}
     enrichment_dict = {}
-    for partner in list(sign_gene_dict.keys()):
+    if partner == "":
+        max_count = len(list(sign_gene_dict.keys()))
+        progressbar = IntProgress(min=0, max=max_count)
+        display(progressbar)
+        for partner in list(sign_gene_dict.keys()):
+            sig_genes = set(sign_gene_dict[partner].index.tolist())
+            enrichment_df,bargraph = pathway_enrichment(coding_genes,sig_genes,pathway_folder,files,1,partner);
+            enrichment_df.reset_index(inplace=True,drop=True)
+            bars_dict[partner]=dict();#bargraph;
+            for i in range(0,len(files)):
+                bars_dict[partner][files[i]]=bargraph[i]
+            enrichment_dict[partner] = enrichment_df
+            enriched_pathways = enrichment_df.loc[(enrichment_df['qvalue']<0.05)]
+            if len(enriched_pathways) > 0:
+                partner_genes.append(partner)
+            for i in enriched_pathways.index:
+                pset = enriched_pathways.loc[i]['SET']
+            partner_genes = list(set(partner_genes))
+            progressbar.value += 1
+        return(bars_dict,enrichment_dict)
+    else:
+        max_count = len(files)
+        progressbar = IntProgress(min=0, max=max_count)
+        display(progressbar)
+        
         sig_genes = set(sign_gene_dict[partner].index.tolist())
         enrichment_df,bargraph = pathway_enrichment(coding_genes,sig_genes,pathway_folder,files,1,partner);
         enrichment_df.reset_index(inplace=True,drop=True)
         bars_dict[partner]=dict();#bargraph;
         for i in range(0,len(files)):
             bars_dict[partner][files[i]]=bargraph[i]
+            progressbar.value += 1
         enrichment_dict[partner] = enrichment_df
-        enriched_pathways = enrichment_df.loc[(enrichment_df['fqval']<0.05)]
+        enriched_pathways = enrichment_df.loc[(enrichment_df['qvalue']<0.05)]
         if len(enriched_pathways) > 0:
             partner_genes.append(partner)
         for i in enriched_pathways.index:
             pset = enriched_pathways.loc[i]['SET']
         partner_genes = list(set(partner_genes))
-    return(bars_dict,enrichment_dict)
+        return(bars_dict,enrichment_dict)
+        
 
-def connect_mutant_driver_partner_pathway(enrichment_dict,geneA):
+def connect_mutant_driver_partner_pathway(enrichment_dict,geneA,qval):
     net_arr = []
     for p in enrichment_dict.keys():
         tmp_df = enrichment_dict[p].copy()
-        tmp_df = tmp_df.loc[tmp_df['fqval']<0.05]
+        tmp_df = tmp_df.loc[tmp_df['qvalue']<qval]
         net_arr.append([p,geneA+"_MUT"])
         for i in tmp_df.index:
             net_arr.append([p,tmp_df.loc[i]['SET']])
@@ -1624,12 +1803,31 @@ def connect_mutant_driver_partner_pathway(enrichment_dict,geneA):
     all_enrichment_types_df = pd.DataFrame(net_types_arr,columns=['node','type'])
     return(all_enrichment_df,all_enrichment_types_df)
 
-def enrichment_heatmap(subset,all_enrichment_df,geneA,fig_folder):
+def enrichment_heatmap(subset,all_enrichment_df,driver_gene,fig_folder,color,msize):
+    '''
+    Build heatmap for pathway enrichment analysis
+    
+    subset: str, define the set of pathways to use, e.g. "HALLMARK", "KEGG", or "REACTOME"
+    all_enrichment_df: pandas DataFrame. The "Partner" column contains neoPPI binding protein names.
+                       The "Pathway" column contains the pathway names.
+    driver_gene: str, name of the driver gene
+    fig_folder:  str, path to the folder to save the heatmap image
+    color:  str, heatmap color
+    msize:  if 'auto', the heatmap size will be determined automatically; if list,the first element defines the 
+            heatm width, and the second element defines the heatmap height.
+    
+    '''
+    
     root = tkinter.Tk();
     todrop = [x for x in all_enrichment_df.index if subset not in all_enrichment_df.loc[x]['Pathway'] and
-            geneA+"_MUT" != all_enrichment_df.loc[x]['Partner']]
+            driver_gene+"_MUT" != all_enrichment_df.loc[x]['Partner']]
     subset_enrichment_df = all_enrichment_df.drop(todrop)
-
+    if len(subset_enrichment_df)==0:
+        print("No pathways of the",subset,"subset are found.")
+        fig = plt.figure(figsize=(3,3))
+        plt.close(fig);
+        return(fig)
+    
     enriched_partners = subset_enrichment_df['Partner'].unique().tolist()
     enriched_pathways = subset_enrichment_df['Pathway'].unique().tolist()
     enriched_map = pd.DataFrame(index = enriched_pathways,columns=enriched_partners)
@@ -1644,12 +1842,21 @@ def enrichment_heatmap(subset,all_enrichment_df,geneA,fig_folder):
         print("Cannot build a cluster map for one partner")
     else:
     #adjust heatmap size:
-        coeff = 1/root.winfo_fpixels('1i')
-        width = len(enriched_map.columns.tolist())*coeff*20
-        height = len(enriched_map.index.tolist())*coeff*12
+        if msize == 'auto':
+            coeff = 1/root.winfo_fpixels('1i')
+            width = len(enriched_map.columns.tolist())*coeff*20
+            height = len(enriched_map.index.tolist())*coeff*12
+        elif type(msize)==list and len(msize)==2:
+            width = msize[0]
+            height = msize[1]
+        else:
+            print("Warning: msize can be either 'auto' or a list with two elements.")
+            coeff = 1/root.winfo_fpixels('1i')
+            width = len(enriched_map.columns.tolist())*coeff*20
+            height = len(enriched_map.index.tolist())*coeff*12
     
-    
-        g = sns.clustermap(data=enriched_map,cmap=['white','green'],
+        
+        g = sns.clustermap(data=enriched_map,cmap=['white',color],
                     xticklabels=1,yticklabels=1,method='ward',
                     dendrogram_ratio=(.05, 0.05),cbar_pos=None,
                     linewidths=0.5, linecolor='lightgrey',figsize=(width,height))
@@ -1692,7 +1899,7 @@ def get_sig_gene_survival_plot(partner,df_mut_exp_samples,sign_gene_dict,clinica
                                                  exp_cutoff=33,pval=0.05,savefile=1)
         surv_df.set_index('GENE',inplace=True)
         cols = surv_df.columns.tolist()
-        cols[-1] = 'CLIN_PVAL'
+        #cols[-1] = 'CLIN_PVAL'
         surv_df.columns = cols
         #Add survival data to signature gene annotation
         sign_gene_dict[partner] = pd.concat([sign_gene_dict[partner],surv_df],axis=1)
@@ -1714,7 +1921,11 @@ def conduct_survival_analysis(partner, sig_genes,df_mut_exp_samples,mut_survive_
     
         figs[sig_gene] = [fig,p_value,med_time_high,med_time_low]
         out.append([sig_gene,med_time_high,med_time_low,p_value])
-    surv_df = pd.DataFrame(out,columns=['GENE','med_time_high','med_time_low','PVAL'])
+    surv_df = pd.DataFrame(out,columns=['GENE','med_time_high','med_time_low','CLIN_PVAL'])
+    if len(surv_df['CLIN_PVAL']) > 0:
+        surv_df['CLIN_FDR'] = get_FDR(surv_df['CLIN_PVAL'])
+    else:
+        surv_df['CLIN_FDR'] =[]
     return(surv_df,figs)
 
 def survival_times(partner,sig_gene,mut_survive_df,wt_survive_df,pval,savefile):
@@ -1937,3 +2148,382 @@ def get_sample_info(patient_id):
     else:
         print("TCGA patient ID",patient_id,"not found.")
         
+def get_FDR(pvals):
+    return mltc.multipletests(pvals,method='fdr_bh')[1] #fdr_bh
+
+def get_partner_info(partners, hgnc_df):
+    partner_hgnc_df = hgnc_df.loc[partners]
+    partner_hgnc_df = partner_hgnc_df[['HGNC ID','Approved name','Previous symbols','Alias symbols','Accession numbers',
+                                   'RefSeq IDs','Alias names','Previous name','NCBI Gene ID','Ensembl gene ID',
+                                   'OMIM ID(supplied by OMIM)','RefSeq(supplied by NCBI)','UniProt ID(supplied by UniProt)']]
+    partner_hgnc_df.columns = ['HGNC ID','Approved name','Previous symbols','Alias symbols','Accession numbers',
+                               'RefSeq IDs','Alias names','Previous name','NCBI Gene ID','Ensembl gene ID','OMIM ID','RefSeq','UniProt ID']
+    return(partner_hgnc_df)
+
+def get_neoPPI_cross_correlation_distr(all_mut_score_nn_df,df_mut_exp_samples,cancer,fig_folder,bins=10,color="#8dbad3"):
+    '''
+    all_mut_score_nn_df: pandas DataFrame with neoPPI scores in mutated samples
+    df_mut_exp_samples: pandas DataFrame with gene expression in mutated samples
+    bins: number of histagram bins
+    color: color of the histagram
+    '''
+    sns.set_style("whitegrid", {'axes.grid' : False})
+    out = []
+    for gene in all_mut_score_nn_df.columns:
+        if gene in df_mut_exp_samples.index:
+            v1 = all_mut_score_nn_df[gene].values
+            v2 = df_mut_exp_samples.loc[gene].values
+            v1a = []
+            v2a = []
+            for l, n in zip(v1, v2):
+                if (str(l)!='nan') and (str(n)!='nan'):
+                    v1a.append(l)
+                    v2a.append(n)
+            r,p = ss.pearsonr(v1a,v2a)
+            if r != 0:
+                out.append([gene,abs(r)])
+    out_df = pd.DataFrame(out,columns=['GENE','R'])
+    fig, ax = plt.subplots(figsize=(3,3))
+    sns.histplot(data = out_df['R'],ax=ax,bins=bins,color=color)
+    ax.set_xlabel("CORR")
+    ax.set_title(cancer)
+    fig.savefig(fig_folder+cancer+"_hist.pdf",dpi=300,format='pdf')
+    return(fig, out_df)
+
+def coregulated_neoppis_map(all_mut_score_nn_df,fig_folder,cancer,method, xfontsize=3, yfontsize=3):
+    corr = all_mut_score_nn_df.corr()
+    for i in corr.index:
+        for c in corr.columns:
+            corr[c].loc[i] = abs(corr[c].loc[i])
+    g = sns.clustermap(data=corr,cmap='bwr',method=method,xticklabels=1,yticklabels=1,
+                  dendrogram_ratio=(.1, 0.1),row_cluster=True,col_cluster=True,figsize=(6,6),
+                  cbar_kws=dict(ticks=[0, 0.50, 1], orientation='vertical'),vmin = 0, vmax=1.0)
+    g.ax_heatmap.set_xticklabels(g.ax_heatmap.get_xmajorticklabels(), fontsize = xfontsize);
+    g.ax_heatmap.set_yticklabels(g.ax_heatmap.get_ymajorticklabels(), fontsize = yfontsize);
+    x0, _y0, _w, _h = g.cbar_pos
+    g.ax_cbar.set_position([x0, g.ax_col_dendrogram.get_position().y0+0.02, 0.02,g.ax_col_dendrogram.get_position().height])
+    g.savefig(fig_folder+cancer+"_PPI_score_corr_matrix.pdf",dpi=300,format='pdf')
+
+    #Average correlation between neoPPI scores
+    n = 0
+    arr = []
+    for i in range(0,len(corr.index.values)):
+        for c in range(i,len(corr.columns.values)):
+            if i != c:
+                n+=1
+                arr.append(corr.iloc[i,c])
+    print("Average correlation:", np.mean(arr))
+    return corr
+
+def get_ppi_scores_multiple_cancers(cancers,params):
+    ppi_score_dict = dict()
+    for cancer in cancers:
+        print(cancer)
+        df_mut_exp_samples,df_wt_exp_samples = get_wt_mut_expression(cancer,params)
+        all_mut_score_nn_df,all_wt_score_nn_df,scores_mut_nn_df,scores_wt_nn_df = calculate_ppi_scores_not_scaled(cancer,
+                                                                                  params,df_wt_exp_samples,df_mut_exp_samples)
+        ppi_score_dict[cancer] = [all_mut_score_nn_df,df_mut_exp_samples]
+    return(ppi_score_dict)
+
+def get_ppi_values(cancer,partner,ppi_score_dict):
+    if cancer not in ppi_score_dict.keys():
+        print("Cancer type not found")
+    else:
+        if partner not in ppi_score_dict[cancer][0].columns:
+            print("Partner not found")
+        else:
+            show_top = 10
+            pdf = pd.DataFrame(ppi_score_dict[cancer][0].sort_values(by=[partner],ascending=False)["AURKA"].head(show_top))
+            pdf.columns = [partner+"_PPIscores"]
+            return(pdf)
+def neoPPI_genes_distr(sign_gene_dict,color,xfontsize=4,yfontsize=8):
+    fig, ax = plt.subplots(figsize=(7,2))
+    plt.tight_layout()
+    stat_df=sig_genes_size(sign_gene_dict)
+    stat_df.sort_values(by='SIZE',inplace=True)
+    stat_df.reset_index(inplace=True)
+    pal = sns.light_palette(color, len(stat_df['SIZE'].values.tolist()))
+
+    sns.barplot(data=stat_df,x='neoPPI',y='SIZE',ax=ax,palette=pal,width=1.2) #'bwr'
+
+    ax.set_yticklabels(ax.get_ymajorticklabels(), fontsize = yfontsize);
+    ax.set_xticklabels(ax.get_xmajorticklabels(), fontsize = xfontsize);
+    ax.set_xticks(ax.get_xticks(), ax.get_xmajorticklabels(), rotation='vertical');
+    ax.margins(0)
+    return fig,stat_df
+
+def save_enrichment(enrichment_dict,qvalue,params,cancer):
+    driver_gene = params['driver_gene']
+    driver_mut = params['driver_mut']
+    partners = params['partners']
+    tbl_folder = params['tbl_folder']
+    columns = enrichment_dict[list(enrichment_dict.keys())[0]].columns.values.tolist()
+    columns.append("PARTNER")
+    neoPPI_enrichment_df = pd.DataFrame(columns = columns)
+    for partner in enrichment_dict.keys():
+        partner_df = enrichment_dict[partner].loc[enrichment_dict[partner]['qvalue']<0.05]
+        if len(partner_df)>0:
+            partner_df['PARTNER'] = partner
+            neoPPI_enrichment_df = pd.concat([neoPPI_enrichment_df,partner_df],join='inner')
+    #Save the dataframe
+    neoPPI_enrichment_df.to_csv(tbl_folder+gen_filename(driver_gene,driver_mut,cancer,
+                                                       "_Enrichment_significant.csv"),sep=",")
+
+def save_enrichment_figs(bars_dict,params,cancer):
+    driver_gene = params['driver_gene']
+    driver_mut = params['driver_mut']
+    fig_folder = params['fig_folder']
+    pathway_files = params['pathway_files']
+    for partner in bars_dict.keys():
+        for pathway in pathway_files:
+            fig_file = fig_folder+gen_filename(driver_gene,driver_mut,cancer,"_"+partner+"_Enrichment_"+
+                                      (".").join(pathway.split(".")[:-1])+".png")
+            bars_dict[partner][pathway].savefig(fig_file,dpi=600,bbox_inches='tight')    
+def sign_genes_survival(df_mut_exp_samples,sign_gene_dict,params,cancer,partners):
+    clinical_f = params['clinical_f']
+    tbl_folder = params['tbl_folder']
+    driver_gene = params['driver_gene']
+    driver_mut = params['driver_mut']
+    
+    survival_plots = {}
+    progressbar = IntProgress(min=0, max=len(partners))
+    display(progressbar)
+    for partner in partners:
+        try:
+            sign_gene_dict[partner].drop(['med_time_high','med_time_low','CLIN_PVAL','CLIN_FDR'],inplace=True,axis=1)
+        except KeyError:
+            pass
+        sign_gene_dict,figs = get_sig_gene_survival_plot(partner,df_mut_exp_samples,sign_gene_dict,clinical_f)
+        survival_plots[partner] = figs
+        progressbar.value += 1
+    out_df =pd.DataFrame()
+    for partner in sign_gene_dict.keys():
+        pdf = sign_gene_dict[partner].copy()
+        if len(pdf)>0:
+            if len(out_df)==0:
+                out_df = pdf.copy()
+            else:
+                out_df = pd.concat([out_df,pdf])
+    out_df.to_csv(tbl_folder+gen_filename(driver_gene,driver_mut,cancer,
+                                               "_signature_genes_clin.csv"),sep=",")
+    return(out_df,sign_gene_dict,survival_plots)
+
+def save_survival_plots(survival_plots,pval, qval,partner,params,cancer,survival_df):
+    fig_folder = params['fig_folder']
+    driver_gene = params['driver_gene']
+    driver_mut = params['driver_mut']
+    for partner in survival_plots.keys():
+        figs = survival_plots[partner]
+        for gene in figs.keys():
+            file = fig_folder+gen_filename(driver_gene,driver_mut,cancer,"_"+partner+"_"+gene+"_survival_plot_FDR.png")
+            fig,p_value,med_time_high,med_time_low =  figs[gene]
+            if p_value < pval and med_time_high < med_time_low:
+                fdr = survival_df.loc[survival_df['PARTNER']==partner].loc[gene]['CLIN_FDR']
+                if fdr < qval:
+                    fig.savefig(file,dpi=600,format='png')
+def get_gene_drug_df(ligands_df,params,cancer):
+    ligands_df = ligands_df.loc[ligands_df['num_total_ligands'] !=0]
+    tbl_folder = params['tbl_folder']
+    driver_gene = params['driver_gene']
+    driver_mut = params['driver_mut']
+    
+    out = []
+    for i in ligands_df.index:
+        app_drugs = []
+        all_ligs = []
+        if ligands_df.loc[i]['approved_drugs']!="":
+            app_drugs = ligands_df.loc[i]['approved_drugs']
+            app_drugs = app_drugs.replace("PMID:","PMID").split(":")
+        if ligands_df.loc[i]['all_ligands']!="":
+            all_ligs = ligands_df.loc[i]['all_ligands']
+            all_ligs = all_ligs.replace("PMID:","PMID").split(":")
+            all_ligs=[x for x in all_ligs if x not in app_drugs]
+            for lig in all_ligs:
+                out.append([i,lig,'not_approved'])
+            for lig in app_drugs:
+                out.append([i,lig,'approved'])
+    drugs_df = pd.DataFrame(out,columns=['gene','compound','status'])
+    ofile = tbl_folder+gen_filename(driver_gene,driver_mut,cancer,"_genes_with_drugs.csv")
+    drugs_df.to_csv(ofile,sep=",")
+    return drugs_df, ofile
+
+
+def get_drugs(sign_gene_dict,pval,qval,params,cancer,partners):
+    clin_genes = []
+    for partner in partners:
+        tmp = sign_gene_dict[partner].loc[sign_gene_dict[partner]['CLIN_PVAL']<pval]
+        tmp = tmp.loc[tmp['CLIN_FDR']<qval]
+        tmp = tmp.loc[tmp['med_time_high']<tmp['med_time_low']]
+        tmp = tmp.index.values.tolist()
+        clin_genes = clin_genes+tmp
+    clin_genes = list(set(clin_genes))
+    print("There are a total of:",len(clin_genes),"clinical genes")
+    ligands_df=get_ligand_information_in_clinical(clin_genes)
+    
+    gene_drugs_df,ofile = get_gene_drug_df(ligands_df,params,cancer)
+    
+    return clin_genes,ligands_df,gene_drugs_df,ofile
+
+def new_project(project_name,project_folder,params):
+    projects_folder = params['projects_folder']
+    project_folder = projects_folder+project_name+"/"
+
+    #Setup project folders
+    if not os.path.exists(os.path.dirname(project_folder)):
+        os.mkdir(os.path.dirname(project_folder)) 
+ 
+    fig_folder = project_folder+"Figures/" #save pictures here
+    if not os.path.exists(os.path.dirname(fig_folder)):
+        os.mkdir(os.path.dirname(fig_folder)) 
+
+    tbl_folder = project_folder+"Tables/" #save tables here
+    if not os.path.exists(os.path.dirname(tbl_folder)):
+        os.mkdir(os.path.dirname(tbl_folder)) 
+    
+    net_folder = project_folder+"Networks/" #save netowrks here
+    if not os.path.exists(os.path.dirname(net_folder)):
+        os.mkdir(os.path.dirname(net_folder)) 
+    
+    params['fig_folder']=fig_folder
+    params['tbl_folder']=tbl_folder
+    params['net_folder']=net_folder
+    
+    return(params)
+
+    #params['out_folder']=out_folder
+    
+def file_download(url,file,folder):
+    from tqdm import tqdm
+    import requests
+    import os
+    os.chdir(folder)
+    
+    if not os.path.isfile(file):
+        url = "http://api.gdc.cancer.gov/data/3586c0da-64d0-4b74-a449-5ff4d9136611"
+        response = requests.get(url, stream=True)
+        total_size_in_bytes= int(response.headers.get('content-length', 0))
+        block_size = 1024
+        progress_bar = tqdm(total=total_size_in_bytes, unit='iB', unit_scale=True)
+        with open(file, 'wb') as file:
+            for data in response.iter_content(block_size):
+                progress_bar.update(len(data))
+                file.write(data)
+        progress_bar.close()
+        if total_size_in_bytes != 0 and progress_bar.n != total_size_in_bytes:
+            print("ERROR, something went wrong")
+    else:
+        print(file,"exists")
+def gene_lookup(exp_f,hgnc_f):
+    #Make a table with gene symbol and gene ID based on the mRNA exp file
+    out = []
+    n = 0
+    with open(exp_f) as f:
+        for line in f:
+            if n > 0:
+                line = line.strip()
+                line = line.replace('"','').split('\t')
+                out.append([line[0].split('|')[0].strip(),line[0].split('|')[1].strip()])
+            n = 1
+    
+    lookup_df = pd.DataFrame(out,columns = ['old_symbol','gene_id'])
+
+    #Get hgnc symbols
+    hgnc_df = pd.read_csv(hgnc_f,sep='\t',index_col = 0)
+    hgnc_df['NCBI Gene ID']= [str(x) for x in hgnc_df['NCBI Gene ID'].values]
+    #Add current symbols
+    out = []
+    for i in lookup_df.index:
+        gene_id = str(lookup_df.loc[i]['gene_id'])
+        hgnc_symbol = hgnc_df.loc[hgnc_df['NCBI Gene ID']==gene_id]['Approved symbol'].values
+        if len(hgnc_symbol)>0:
+            out.append(hgnc_symbol[0])
+        else:
+            out.append('')  
+    lookup_df['current_symbol']=out
+    print("DONE!")
+    return(lookup_df)
+
+def refine_mRNA_gene_names(exp_f,lookup_df,outfile):
+    exp_f2 = open(outfile, "w")#we will save the refined file here
+    n=0
+    with open(exp_f) as f:
+        for line in f:
+            line = line.strip()
+            if line != '':
+                line = line.replace('"','').split('\t')
+            if n > 0 and line != '':
+                gene_id = line[0].split("|")[1].strip()
+                symbol = lookup_df.loc[lookup_df['gene_id']==str(gene_id)]['current_symbol'].values
+                if len(symbol)==0:
+                    symbol = ''
+                else:
+                    symbol = symbol[0]
+                if symbol == '':
+                    symbol = lookup_df.loc[lookup_df['gene_id']==str(gene_id)]['old_symbol'].values[0]
+                    if symbol == '?':
+                        symbol = str(gene_id)
+                line[0] = symbol
+            line = [x.strip() for x in line]
+            line = ('\t').join(line)+"\n"
+            exp_f2.write(line)
+            n=1
+    exp_f2.close()
+    return(outfile)
+
+
+    
+def refine_CNV_names(cnv_f,lookup_df,outfile):
+    #update gene names in CNV file
+    n = 0
+    cnv_f2 = open(outfile,'w')
+    with open(cnv_f) as f:
+        for line in f:
+            if n > 0:
+                line = line.split('\t')
+                if line[0] in lookup_df['old_symbol'].values:
+                    line[0] = lookup_df.loc[lookup_df['old_symbol']==line[0]]['current_symbol'].values[0]
+                line = [x.strip().replace("\n", "") for x in line]
+                line = ('\t').join(line)+'\n'
+            cnv_f2.write(line)
+            n=1
+    cnv_f2.close()   
+    return(outfile)
+    
+def download_and_refine_tcga_exp_data(params):
+    #Download mRNA exprassion data 
+    file = 'EBPlusPlusAdjustPANCAN_IlluminaHiSeq_RNASeqV2.geneExp.tsv'
+    url = "http://api.gdc.cancer.gov/data/3586c0da-64d0-4b74-a449-5ff4d9136611"
+    genomics_clinical_folder = params['genomics_clinical_folder']
+    hgnc_f = params['hgnc_f']
+    file_download(url,file,genomics_clinical_folder)
+    
+    #Refine the files
+    os.chdir(genomics_clinical_folder)
+    exp_f = genomics_clinical_folder + "EBPlusPlusAdjustPANCAN_IlluminaHiSeq_RNASeqV2.geneExp.tsv" 
+    #Compare gene symbols in the mRNA expression file with current HGNC gene symbols
+    #and create a look-up table to update gene names
+    lookup_df = gene_lookup(exp_f,hgnc_f)
+    
+    #Check and rename genes in the mRNA expression file:
+    outfile = ('.').join(exp_f.split('.')[:-1]+['refined.tsv'])#we will save the refined file here
+    return(refine_mRNA_gene_names(exp_f,lookup_df,outfile))
+    
+def check_files(params):
+    
+    folders = [params['projects_folder'],params['pathway_folder'],params['genomics_clinical_folder'],params['data_folder']]
+    files = [params['mut_f'],params['exp_f'],params['clinical_f'],params['uuid_f']]
+    flag1 = 0
+    for f in folders:
+        if not os.path.isdir(f):
+            print("FOLDE NOT FOUND:",f)
+            flag1 = 1
+    
+    flag2 = 0    
+    for f in files:
+        if not os.path.isfile(f):
+            print("FILE NOT FOUND",f)
+            flag2 = 1
+    if flag1 == 0 and flag2 == 0:
+        print("Files & Folders check completed. All files and folders are in place.")
+    else:
+        print("Files & Folders check completed. Some files or folders are missing.")
