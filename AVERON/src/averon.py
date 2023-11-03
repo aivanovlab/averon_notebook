@@ -5,7 +5,6 @@ import json
 import ipywidgets as widgets
 from ipywidgets import IntProgress, Layout, VBox, HBox
 from IPython.display import display
-
 import lifelines
 from lifelines import KaplanMeierFitter
 from lifelines.statistics import logrank_test
