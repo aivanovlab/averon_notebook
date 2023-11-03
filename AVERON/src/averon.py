@@ -325,13 +325,6 @@ def display_cynetwork3(params,cancer,net_df,type_df, colors,mapping,layout='forc
 
     return p4c, file
 
-
-
-
-
-
-
-
 def display_cynetwork2(net_df,type_df, colors=['#FF0000','#00FF00','#0000FF','#FFA500'],layout='force-directed'):
     
     import py4cytoscape as p4c
@@ -427,22 +420,6 @@ def display_cynetwork(geneA,partner,cancer,sig_genes,enrichment_df,fqval,
     p4c.layout_network(layout_name = layout)
     return p4c
     
-    
-
-def func1():
-    def showit(slider1,out):
-        with out:
-            print(slider1)
-    
-    def show_value(slider1):
-        showit(slider1,out)
-
-    out = widgets.Output()
-    slider1 = widgets.FloatSlider(min=0,max=1,step=0.01,value=0.5)
-    widget_1 = widgets.interactive(show_value,slider1 = slider1)    
-    vBox_1 = VBox([slider1, out]) 
-    widget_1.update()         
-    return vBox_1
 def get_signature_genes2(correlation_df,partner,geneA,CORR_BP_MUT,PVAL_BP_MUT,PVAL,QVAL):
 
         sig_genes = correlation_df[partner].loc[(correlation_df[partner]['CORR_BP_MUT']>=CORR_BP_MUT) &
@@ -543,9 +520,6 @@ def display_signature_genes(correlation_df,partner,geneA):
     vbox = VBox([controls_1,out])
     sliders.update()
     return(vbox,sig_genes)
-    
-    
-
 
 def get_outliers_correct(x,y):
     model = sm.OLS(x,y).fit()#formula=f, data=arr).fit()
@@ -662,9 +636,6 @@ def ppi_score_mrna_corr(gene,geneA,partner,all_mut_score_df,all_wt_score_df,df_m
         ax.set_yticks([])
 
     return(fig)
-
-
-
 
 def pathway_enrichment(coding_genes,sig_genes,pathway_folder,files,savefile,partner):
     import statsmodels.sandbox.stats.multicomp as mltc
@@ -784,8 +755,6 @@ def enrichment_bargraph(selected_df, top, geneset_file,savefile,partner):
     ax2.axvline(x=-np.log10(0.05),color='red',ls ='--',lw=0.5)
     return fig;
 
-
-
 def get_mut_data(mut_f,df_barcodes,cancer,geneA,mutA):
     mut_samples,wt_samples = get_mutation_data(mut_f, df_barcodes,cancer,geneA, mutA)
     mut_samples = list(set(mut_samples))
@@ -797,7 +766,6 @@ def gen_filename(geneA,mutA,cancer,suffix):
         return(("_").join([geneA,mutA[0],cancer])+suffix)
     else: 
         return(("_").join([geneA,'MUT',cancer])+suffix)
-    
 
 def calculate_ppi_scores_not_scaled(cancer,params,df_wt_exp_samples,df_mut_exp_samples):
     from pathlib import Path
@@ -825,16 +793,11 @@ def calculate_ppi_scores_not_scaled(cancer,params,df_wt_exp_samples,df_mut_exp_s
     scores_mut_df.to_csv(out_folder+gen_filename(driver_gene,driver_mut,cancer,"_PPIscores.csv"),sep=",")
     scores_wt_df.to_csv(out_folder+driver_gene+"_WT_"+cancer+"_PPIscores.csv",sep=",")
     return(all_mut_score_df,all_wt_score_df,scores_mut_df,scores_wt_df)    
-    
 
 def get_coding_genes(hgnc_df):
-
     return(hgnc_df.loc[hgnc_df['Locus group']=='protein-coding gene'])
-    
-    
 
 #Calculate PPI scores
-
 
 def get_PPI_scores3_not_scaled(df1,gene1,gene2):
     exp1 = df1.loc[gene1]#.values
@@ -1091,14 +1054,6 @@ def get_cancer_mutation_freq(barcode_df,mut_f,geneA,mutA,cancers):
             ax.text(i, total + y_offset, round(target_mut), ha='center')
     return (fig, cancers_df)
 
-
-def get_binding_partners(ppi_f):
-    partners = []
-    with open(ppi_f) as f:
-        for partner in f:
-            partner = partner.strip()
-            partners.append(partner)
-    return(list(set(partners)))
 
 def compare_ppi_scores(ppi_score_dict,partners):
     out = []
@@ -1390,13 +1345,6 @@ def boxplot_neoppi_score_distribution(genes,cancers,ppi_score_dict,palette,color
             i+=1
     return(fig)
 
-def show_ax(ax,flag):
-    ax.spines['top'].set_visible(flag)
-    ax.spines['right'].set_visible(flag)
-    ax.spines['bottom'].set_visible(flag)
-    ax.spines['left'].set_visible(flag)
-    return ax
-
 def survival_analysis(mut_samples,clinical_f,all_mut_score_nn_df,show_plot,pval_treshold):
     '''
     Determine the difference in survival times in mutant samples with high and low neoPPI scores
@@ -1602,12 +1550,6 @@ def calculate_correlations(df_mut_exp_samples,df_wt_exp_samples,partners,all_mut
     
 sig_genes = []
 
-def on_value_change(change):
-    global sig_genes
-    sig_genes, tbl = get_signature_genes2(corr_dict,partner,geneA,box.children[0].children[0].value,
-                    box.children[0].children[1].value,box.children[0].children[2].value,box.children[0].children[3].value)
-    return(box,sig_genes)
-
 def get_signature_genes_for_multiple_binding_partners(CORR_BP_MUT,PVAL_BP_MUT,PVAL,QVAL,corr_dict,cancer,geneA,mutA):
     sign_gene_dict = {}
     for p in corr_dict.keys():
@@ -1634,7 +1576,8 @@ def sig_genes_size(sign_gene_dict):
     return(df_stat)
     
 def jaccard(sign_gene_dict,fig_folder,color,xfontsize=4,yfontsize=4):
-    root = tkinter.Tk();
+    from pylab import rcParams
+    #root = tkinter.Tk();
     genesets = []
     genesets_data = []
     all_J_scores = []
@@ -1676,7 +1619,8 @@ def jaccard(sign_gene_dict,fig_folder,color,xfontsize=4,yfontsize=4):
         print("Cannot build a cluster map for one partner")
     else:
     #adjust heatmap size:
-        coeff = 1/root.winfo_fpixels('1i')
+        coeff = 1/rcParams['figure.dpi']
+        #coeff = 1/root.winfo_fpixels('1i')
         width = len(jdf.columns.tolist())*coeff*100
         height = len(jdf.index.tolist())*coeff*100
         if width > 2^16 or height > 2^16:
@@ -1691,48 +1635,6 @@ def jaccard(sign_gene_dict,fig_folder,color,xfontsize=4,yfontsize=4):
     g.ax_heatmap.set_yticklabels(g.ax_heatmap.get_ymajorticklabels(), fontsize = yfontsize);
     print("Average Jaccard Index: ", np.round(np.mean(Jarr),1), "%")
     #g.savefig(fig_folder+"jackard.png",dpi=600)
-    return(g)
-
-
-def neoppi_sig_gene_heatmap(sign_gene_df):
-    root=tkinter.Tk()
-    sub_sign_gene_df = sign_gene_df[['CORR_BP_MUT','PARTNER']].copy()
-    sub_sign_gene_df.reset_index(inplace=True)
-    sub_sign_gene_df.columns=['SIG_GENE','CORR_BP_MUT','PARTNER']
-    sig_gene = pd.DataFrame(index = list(set(sub_sign_gene_df['PARTNER'])),columns = list(set(sub_sign_gene_df['SIG_GENE'])))
-    for i in sub_sign_gene_df.index:
-        g = sub_sign_gene_df.loc[i]['SIG_GENE']
-        p = sub_sign_gene_df.loc[i]['PARTNER']
-        sig_gene[g].loc[p]=sub_sign_gene_df.loc[i]['CORR_BP_MUT']
-    sig_gene.fillna(0,inplace=True)
-    
-    if len(sig_gene.columns) < 2:
-        print("Cannot build a cluster map for one partner")
-    else:
-    #adjust heatmap size:
-        coeff = 1/root.winfo_fpixels('1i')
-        width = len(sig_gene.columns.tolist())*coeff*20
-        height = len(sig_gene.index.tolist())*coeff*500
-        if width > 2^16 or height > 2^16:
-            width = 2^16
-            height = 2^16
-    
-    g = sns.clustermap(sig_gene,figsize=(width,height),
-                    xticklabels=1,yticklabels=1,
-                    cbar_pos=(-0.04, 0.75, .01, .2),
-                    dendrogram_ratio=(.025, 0.025),
-                    cmap='Blues',method='ward')
-    if len(sig_gene.columns.tolist())>50:
-        fontsize = 5
-    elif len(sig_gene.columns.tolist())>20:
-        fontsize = 8
-    else:
-        fontsize = 10
-    g.ax_heatmap.set_xticklabels(g.ax_heatmap.get_xmajorticklabels(), fontsize = fontsize);
-    g.ax_heatmap.set_yticklabels(g.ax_heatmap.get_ymajorticklabels(), fontsize =fontsize);
-    g.ax_heatmap.set_xlabel("Signature gene");
-    g.ax_heatmap.set_ylabel("neoPPI");
-    
     return(g)
 
 def pathway(sign_gene_dict,files,partner,coding_genes,pathway_folder):
@@ -1818,7 +1720,7 @@ def enrichment_heatmap(subset,all_enrichment_df,driver_gene,fig_folder,color,msi
     
     '''
     
-    root = tkinter.Tk();
+    #root = tkinter.Tk();
     todrop = [x for x in all_enrichment_df.index if subset not in all_enrichment_df.loc[x]['Pathway'] and
             driver_gene+"_MUT" != all_enrichment_df.loc[x]['Partner']]
     subset_enrichment_df = all_enrichment_df.drop(todrop)
@@ -1843,7 +1745,9 @@ def enrichment_heatmap(subset,all_enrichment_df,driver_gene,fig_folder,color,msi
     else:
     #adjust heatmap size:
         if msize == 'auto':
-            coeff = 1/root.winfo_fpixels('1i')
+            #coeff = 1/root.winfo_fpixels('1i')
+            from pylab import rcParams
+            coeff = 1/rcParams['figure.dpi']
             width = len(enriched_map.columns.tolist())*coeff*20
             height = len(enriched_map.index.tolist())*coeff*12
         elif type(msize)==list and len(msize)==2:
@@ -2268,17 +2172,6 @@ def save_enrichment(enrichment_dict,qvalue,params,cancer):
     #Save the dataframe
     neoPPI_enrichment_df.to_csv(tbl_folder+gen_filename(driver_gene,driver_mut,cancer,
                                                        "_Enrichment_significant.csv"),sep=",")
-
-def save_enrichment_figs(bars_dict,params,cancer):
-    driver_gene = params['driver_gene']
-    driver_mut = params['driver_mut']
-    fig_folder = params['fig_folder']
-    pathway_files = params['pathway_files']
-    for partner in bars_dict.keys():
-        for pathway in pathway_files:
-            fig_file = fig_folder+gen_filename(driver_gene,driver_mut,cancer,"_"+partner+"_Enrichment_"+
-                                      (".").join(pathway.split(".")[:-1])+".png")
-            bars_dict[partner][pathway].savefig(fig_file,dpi=600,bbox_inches='tight')    
 def sign_genes_survival(df_mut_exp_samples,sign_gene_dict,params,cancer,partners):
     clinical_f = params['clinical_f']
     tbl_folder = params['tbl_folder']
@@ -2470,52 +2363,42 @@ def refine_mRNA_gene_names(exp_f,lookup_df,outfile):
     exp_f2.close()
     return(outfile)
 
-
-    
-def refine_CNV_names(cnv_f,lookup_df,outfile):
-    #update gene names in CNV file
-    n = 0
-    cnv_f2 = open(outfile,'w')
-    with open(cnv_f) as f:
-        for line in f:
-            if n > 0:
-                line = line.split('\t')
-                if line[0] in lookup_df['old_symbol'].values:
-                    line[0] = lookup_df.loc[lookup_df['old_symbol']==line[0]]['current_symbol'].values[0]
-                line = [x.strip().replace("\n", "") for x in line]
-                line = ('\t').join(line)+'\n'
-            cnv_f2.write(line)
-            n=1
-    cnv_f2.close()   
-    return(outfile)
-    
 def download_and_refine_tcga_exp_data(params):
     #Download mRNA exprassion data 
     file = 'EBPlusPlusAdjustPANCAN_IlluminaHiSeq_RNASeqV2.geneExp.tsv'
     url = "http://api.gdc.cancer.gov/data/3586c0da-64d0-4b74-a449-5ff4d9136611"
     genomics_clinical_folder = params['genomics_clinical_folder']
     hgnc_f = params['hgnc_f']
-    file_download(url,file,genomics_clinical_folder)
-    
-    #Refine the files
     os.chdir(genomics_clinical_folder)
-    exp_f = genomics_clinical_folder + "EBPlusPlusAdjustPANCAN_IlluminaHiSeq_RNASeqV2.geneExp.tsv" 
-    #Compare gene symbols in the mRNA expression file with current HGNC gene symbols
-    #and create a look-up table to update gene names
-    lookup_df = gene_lookup(exp_f,hgnc_f)
+    exp_f = genomics_clinical_folder + file
+    if not os.path.isfile(exp_f):
+        file_download(url,file,genomics_clinical_folder)
     
     #Check and rename genes in the mRNA expression file:
     outfile = ('.').join(exp_f.split('.')[:-1]+['refined.tsv'])#we will save the refined file here
-    return(refine_mRNA_gene_names(exp_f,lookup_df,outfile))
+    if not os.path.isfile(outfile):
+        
+        #Refine the files
+        #Compare gene symbols in the mRNA expression file with current HGNC gene symbols
+        #and create a look-up table to update gene names
+        lookup_df = gene_lookup(exp_f,hgnc_f)
+        return(refine_mRNA_gene_names(exp_f,lookup_df,outfile))
+    else:
+        print(outfile,"is already exist. Nothing to do.")
+        return(outfile)
     
 def check_files(params):
     
     folders = [params['projects_folder'],params['pathway_folder'],params['genomics_clinical_folder'],params['data_folder']]
     files = [params['mut_f'],params['exp_f'],params['clinical_f'],params['uuid_f']]
+    
+    if not os.path.exists(os.path.dirname(params['projects_folder'])):
+        os.mkdir(os.path.dirname(params['projects_folder'])) 
+    
     flag1 = 0
     for f in folders:
         if not os.path.isdir(f):
-            print("FOLDE NOT FOUND:",f)
+            print("FOLDER NOT FOUND:",f)
             flag1 = 1
     
     flag2 = 0    

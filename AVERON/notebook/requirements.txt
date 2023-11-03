@@ -1,0 +1,8 @@
+tabulate
+ipycytoscape
+pygtop==2.1.4
+lifelines
+seaborn==0.12.2
+scikit_posthocs
+scikit-learn
+matplotlib==3.7.2
