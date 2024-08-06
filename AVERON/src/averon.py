@@ -424,8 +424,8 @@ def get_signature_genes2(correlation_df,partner,geneA,CORR_BP_MUT,PVAL_BP_MUT,PV
         sig_genes = correlation_df[partner].loc[(correlation_df[partner]['CORR_BP_MUT']>=CORR_BP_MUT) &
                                 (correlation_df[partner]['PVAL_BP_MUT']<=PVAL_BP_MUT) &
                                 (correlation_df[partner]['CORR_BP_MUT']>correlation_df[partner]['CORR_BP_WT']) &
-                                (correlation_df[partner]['PVAL']<=PVAL) &
-                                (correlation_df[partner]['QVAL']<=QVAL)]
+                                (correlation_df[partner]['PVAL_MUT_vs_WT']<=PVAL) &
+                                (correlation_df[partner]['QVAL_MUT_vs_WT']<=QVAL)]
         sig_genes = sig_genes.index
     
     
@@ -451,18 +451,19 @@ def display_signature_genes(correlation_df,partner,geneA):
         from IPython.display import display, Markdown
         global sig_genes
         
+        
         if CORR_BP_MUT >= 0:
             sig_genes = correlation_df[partner].loc[(correlation_df[partner]['CORR_BP_MUT']>=CORR_BP_MUT) &
                                 (correlation_df[partner]['PVAL_BP_MUT']<=PVAL_BP_MUT) &
                                 (correlation_df[partner]['CORR_BP_MUT']>correlation_df[partner]['CORR_BP_WT']) &
-                                (correlation_df[partner]['PVAL']<=PVAL) &
-                                (correlation_df[partner]['QVAL']<=QVAL)]
+                                (correlation_df[partner]['PVAL_MUT_vs_WT']<=PVAL) &
+                                (correlation_df[partner]['QVAL_MUT_vs_WT']<=QVAL)]
         else:
             sig_genes = correlation_df[partner].loc[(correlation_df[partner]['CORR_BP_MUT']<=CORR_BP_MUT) &
                                 (correlation_df[partner]['PVAL_BP_MUT']<=PVAL_BP_MUT) &
                                 (correlation_df[partner]['CORR_BP_MUT']<correlation_df[partner]['CORR_BP_WT']) &
-                                (correlation_df[partner]['PVAL']<=PVAL) &
-                                (correlation_df[partner]['QVAL']<=QVAL)]
+                                (correlation_df[partner]['PVAL_MUT_vs_WT']<=PVAL) &
+                                (correlation_df[partner]['QVAL_MUT_vs_WT']<=QVAL)]
         sig_genes = sig_genes.index
     
     
@@ -478,10 +479,12 @@ def display_signature_genes(correlation_df,partner,geneA):
             nl.append(s1)
             N+=1
         sig_tbl.append(nl)
+        sig_tbl1 = sig_tbl
         sig_tbl = tabulate.tabulate(sig_tbl, tablefmt='unsafehtml')
     
         out.clear_output(True)
         header = "\n"+geneA+" MUT/"+partner+" "+str(len(sig_genes))+" signature genes"
+        
         with out:
             display(Markdown("<span style='color:red'>"+header+"</span>"))
             display(sig_tbl)
@@ -489,8 +492,6 @@ def display_signature_genes(correlation_df,partner,geneA):
     
     def show_genes(CORR_BP_MUT,PVAL_BP_MUT,PVAL,QVAL):
         global sig_genes
-        print("AAA")
-        #QVAL=1
         sig_genes, table = get_signature_genes(out,correlation_df,partner,geneA,CORR_BP_MUT,PVAL_BP_MUT,PVAL,QVAL)
     
     CORR_BP_MUT = 0.33
@@ -1005,45 +1006,58 @@ def load_partners(ppi_f):
     print("There are", len(partners), "partners")
     return(partners)
 
-def get_cancer_mutation_freq(barcode_df,mut_f,geneA,mutA,cancers):
-#Mutation frequency
-    sns.set_style("whitegrid", {'axes.grid' : False})
+def get_cancer_mutation_freq(barcode_df, mut_f, geneA, mutA, cancers,label_size=10,xtick_size=10,fig_size=(10,4)):
+    '''
+    Calculate mutation frequency.
+    barcode_df: Pandas dataframe. Headers indicates the cancer type. Values indicate patient barcodes.
+    mut_f: MAF file with mutations
+    geneA: Standard symbol of the driver gene of interest
+    mutA: either list of mutations e.g. ['p.V600E'] or 'All' string for all availble mutations
+    cancers: list of cancer types e.g. ['THCA','SKCM']
+    fig_size: tuple with the figure size, e.g. (10,4)
+    '''
     n = 0
-    cancers_df = pd.DataFrame(index = cancers,columns = ['Wild type','Other mutants','Target mutant'])
-    cancers_df['Target mutant']=0
-    cancers_df['Other mutants']=0
+    barcode_df = barcode_df[cancers]
+    cancers_df = pd.DataFrame(index=cancers, columns=['Wild type', 'Other mutants', 'Target mutant'])
+    cancers_df['Target mutant'] = 0
+    cancers_df['Other mutants'] = 0
+
     for c in cancers_df.index:
         cancers_df['Wild type'].loc[c] = len(barcode_df[c].dropna())
+
     with open(mut_f) as f:
         used_codes = []
         for line in f:
             line = line.split("\t")
             if n == 0:
-                ind = line.index('Tumor_Sample_Barcode') #the column number for the Sample ID
-                n=1
+                ind = line.index('Tumor_Sample_Barcode')  # the column number for the Sample ID
+                n = 1
+
             if geneA in line:
-                flag2 = 0 #indicate the presence of the target mutatioin(s) 
-                for m in mutA:
-                    if m in line:
-                        flag2 = 1
-                        break
+                flag2 = 0  # indicate the presence of the target mutation(s)
+                if mutA == "ALL" or any(m in line for m in mutA):
+                    flag2 = 1
+
                 barcode = line[ind][:12]
                 if barcode not in used_codes:
                     used_codes.append(barcode)
                     for c in barcode_df.columns:
                         if barcode in barcode_df[c].values:
                             if flag2 == 1:
-                                cancers_df['Target mutant'].loc[c] = cancers_df['Target mutant'].loc[c]+1
+                                cancers_df['Target mutant'].loc[c] = cancers_df['Target mutant'].loc[c] + 1
                             else:
-                                cancers_df['Other mutants'].loc[c] = cancers_df['Other mutants'].loc[c]+1
-                            cancers_df['Wild type'].loc[c] = cancers_df['Wild type'].loc[c]-1
-        
-    cancers_df.sort_values(by=["Target mutant"],ascending=False,inplace=True)
-    fig, ax = plt.subplots(figsize=(10, 4))
-    cancers_df.plot(kind='bar', stacked=True, color=['lightgrey', 'skyblue', 'green'],ax=ax,
-                   width=0.8)
-    ax.set_ylabel("Number of samples")
-    ax.set_xlabel("Cancer type")
+                                cancers_df['Other mutants'].loc[c] = cancers_df['Other mutants'].loc[c] + 1
+                            cancers_df['Wild type'].loc[c] = cancers_df['Wild type'].loc[c] - 1
+
+    cancers_df.sort_values(by=["Target mutant"], ascending=False, inplace=True)
+    fig, ax = plt.subplots(figsize=fig_size)
+    cancers_df.plot(kind='bar', stacked=True, color=['lightgrey', 'skyblue', 'green'], ax=ax, width=0.8)
+    ax.set_ylabel("Number of samples",fontsize=label_size)
+    ax.set_xlabel("Cancer type",fontsize=label_size)
+    ax.set_xticklabels(ax.get_xticklabels(),fontsize=xtick_size)
+    ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.28),ncol=3)
+    
+              
     # Add labels to each bar.
     y_offset = 20
     for i, target_mut in enumerate(cancers_df['Target mutant'].values.tolist()):
@@ -1051,8 +1065,9 @@ def get_cancer_mutation_freq(barcode_df,mut_f,geneA,mutA,cancers):
         cancer = cancers_df.index[i]
         if target_mut > 0:
             ax.text(i, total + y_offset, round(target_mut), ha='center')
-    return (fig, cancers_df)
-
+    plt.tight_layout()
+    return fig, cancers_df
+    
 
 def compare_ppi_scores(ppi_score_dict,partners):
     out = []
@@ -1535,15 +1550,15 @@ def calculate_correlations(df_mut_exp_samples,df_wt_exp_samples,partners,all_mut
         corr_dict[partner] = pd.concat([corr_dict[partner],pval_mut_df,pval_wt_df],axis=1)
     
         #Compare the MUT and WT correlations
-        corr_dict[partner]['PVAL'] = compare_correlations(corr_dict[partner]['CORR_BP_MUT'],
+        corr_dict[partner]['PVAL_MUT_vs_WT'] = compare_correlations(corr_dict[partner]['CORR_BP_MUT'],
                                                          corr_dict[partner]['CORR_BP_WT'],
                                                          corr_dict[partner]['N_MUT'],
                                                         corr_dict[partner]['N_WT'])
-        pval_df = pd.DataFrame(corr_dict[partner]['PVAL'])
+        pval_df = pd.DataFrame(corr_dict[partner]['PVAL_MUT_vs_WT'])
         pval_df.dropna(inplace=True)
-        pval_df['QVAL'] = mltc.multipletests(pval_df['PVAL'].values.tolist(),method='fdr_bh')[1]
+        pval_df['QVAL_MUT_vs_WT'] = mltc.multipletests(pval_df['PVAL_MUT_vs_WT'].values.tolist(),method='fdr_bh')[1]
     
-        corr_dict[partner].drop(['PVAL'],inplace=True,axis=1)
+        corr_dict[partner].drop(['PVAL_MUT_vs_WT'],inplace=True,axis=1)
         corr_dict[partner] = pd.concat([corr_dict[partner],pval_df],axis=1)
     return(corr_dict)
     
@@ -1555,8 +1570,8 @@ def get_signature_genes_for_multiple_binding_partners(CORR_BP_MUT,PVAL_BP_MUT,PV
         sign_gene_dict[p] = corr_dict[p].loc[(corr_dict[p]['CORR_BP_MUT']>=CORR_BP_MUT) &
                                             (corr_dict[p]['PVAL_BP_MUT']<=PVAL_BP_MUT) &
                                             (corr_dict[p]['CORR_BP_MUT']>corr_dict[p]['CORR_BP_WT']) &
-                                            (corr_dict[p]['PVAL']<=PVAL) &
-                                            (corr_dict[p]['QVAL']<=QVAL)]
+                                            (corr_dict[p]['PVAL_MUT_vs_WT']<=PVAL) &
+                                            (corr_dict[p]['QVAL_MUT_vs_WT']<=QVAL)]
         sign_gene_dict[p]['CANCER']=cancer
         sign_gene_dict[p]['DRIVER']=geneA+"_"+("_").join(mutA)
         sign_gene_dict[p]['PARTNER']=p
@@ -2048,8 +2063,11 @@ def get_sample_info(patient_id):
         tbl = tabulate.tabulate(tbl, tablefmt='unsafehtml')
         display(tbl)    
         print("\nThe data is derived from the NCI GDC Data Portal: https://portal.gdc.cancer.gov")
+        return dict_sample_info
     else:
         print("TCGA patient ID",patient_id,"not found.")
+        return 
+        
         
 def get_FDR(pvals):
     return mltc.multipletests(pvals,method='fdr_bh')[1] #fdr_bh
